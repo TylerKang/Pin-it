@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pin-It</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="header" class="header">
+      <h1 class="app-name">Pin-It</h1>
+      <div class="header-actions">
+        <span id="note-count" class="note-count">0 notes</span>
+        <button id="see-all-btn" class="header-btn labeled desktop-only" aria-label="See all cards">⊞ <span>All Cards</span></button>
+        <button id="center-view-btn" class="header-btn labeled desktop-only" aria-label="Center view">⌖ <span>Center View</span></button>
+        <button id="center-cards-btn" class="header-btn labeled desktop-only" aria-label="Center all cards">⊡ <span>Gather Cards</span></button>
+        <button id="settings-btn" class="settings-btn" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+    <div id="board" class="board"></div>
+    <button id="add-btn" class="add-btn" aria-label="Add note">+</button>
+
+    <!-- See All Modal -->
+    <div id="see-all-modal" class="modal">
+      <div class="modal-content see-all-content">
+        <div class="see-all-header">
+          <h2>All Notes</h2>
+          <button id="close-see-all" class="close-btn">&times;</button>
+        </div>
+        <div id="see-all-grid" class="see-all-grid"></div>
+      </div>
+    </div>
+    
+    <!-- Create Note Modal -->
+    <div id="create-modal" class="modal">
+      <div class="modal-content">
+        <h2>Create Note</h2>
+        <form id="note-form">
+          <div class="form-section">
+            <label class="form-label" for="title">Title</label>
+            <input type="text" id="title" placeholder="What's this note about?" required maxlength="50" />
+          </div>
+          <div class="form-section">
+            <label class="form-label" for="body">Notes</label>
+            <textarea id="body" placeholder="Add details, thoughts, reminders..." maxlength="500"></textarea>
+          </div>
+          <div class="form-section">
+            <label class="form-label">Color</label>
+            <div class="color-picker">
+              <span class="color-dot active" data-color="#FFF9C4"></span>
+              <span class="color-dot" data-color="#FFCDD2"></span>
+              <span class="color-dot" data-color="#C8E6C9"></span>
+              <span class="color-dot" data-color="#BBDEFB"></span>
+              <span class="color-dot" data-color="#E1BEE7"></span>
+              <span class="color-dot" data-color="#FFE0B2"></span>
+            </div>
+          </div>
+          <div class="form-section">
+            <label class="form-label">Attachment</label>
+            <div class="dropzone create-dropzone" id="create-dropzone" tabindex="0">
+              <input type="file" id="image" accept="image/*" />
+              <div class="dropzone-icon">📎</div>
+              <div class="dropzone-text">Drag and drop an image here</div>
+              <div class="dropzone-hint">or click to browse files</div>
+            </div>
+            <div id="create-image-preview" class="create-image-preview"></div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="cancel-btn">Cancel</button>
+            <button type="submit">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Expanded Note Modal -->
+    <div id="expand-modal" class="modal">
+      <div class="modal-content expand-content">
+        <div class="expand-header">
+          <button id="close-expand" class="close-btn">&times;</button>
+        </div>
+        <div id="expand-note" class="expand-body"></div>
+      </div>
+    </div>
+  </div>
+
+    <!-- Settings Backdrop -->
+    <div id="settings-backdrop" class="settings-backdrop"></div>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="settings-panel">
+      <div class="panel-header">
+        <h2>Settings</h2>
+        <button id="close-settings" class="close-panel">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div class="settings-section">
+          <h3>Sync</h3>
+          <div class="sync-code" id="sync-code-display">------</div>
+          <button id="copy-code-btn" class="copy-btn">Copy Code</button>
+          <input type="text" id="import-code" placeholder="Enter device code to import" maxlength="8" />
+          <div class="sync-actions">
+            <button id="import-btn" class="secondary">Import</button>
+            <button id="sync-btn" class="primary">Sync Now</button>
+          </div>
+          <div class="status-indicator local" id="sync-status">
+            <span class="status-dot"></span>
+            <span>Local only</span>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>About</h3>
+          <p class="version">Version <span>0.1.0</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

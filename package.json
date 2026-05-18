@@ -1,0 +1,14 @@
+{
+  "name": "pin-it",
+  "version": "0.0.0",
+  "description": "A digital pegboard with sticky notes",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
