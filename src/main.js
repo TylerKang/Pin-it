@@ -12,7 +12,7 @@ const COLORS = [
 
 const GRID_SIZE = 250
 const STORAGE_KEY = 'pin-it-notes'
-const SYNC_CODE_KEY = 'pin-it-sync-code'
+const MAX_IMAGE_BYTES = 1024 * 1024 // 1 MB after base64 — ~750 KB source image
 
 let notes = []
 let currentColorIndex = 0
@@ -48,21 +48,8 @@ const importBtn = document.getElementById('import-btn')
 const syncBtn = document.getElementById('sync-btn')
 const syncStatus = document.getElementById('sync-status')
 
-// Add note count span to header if not exists
-function ensureNoteCountHeader() {
-  let header = document.getElementById('note-count')
-  if (!header) {
-    header = document.createElement('span')
-    header.id = 'note-count'
-    // Insert after the pegboard title if exists, or prepend to body
-    const title = document.querySelector('h1') || document.body.firstChild
-    title?.after(header)
-  }
-}
-
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-  ensureNoteCountHeader()
   loadNotes()
   if (!isMobile) clampAllNotes()
   renderNotes()
@@ -185,6 +172,16 @@ function setupEventListeners() {
     if (e.target.id === 'see-all-modal') closeModal(e.target)
   })
 
+  // Escape key closes modals / settings
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return
+    if (settingsPanel.classList.contains('open')) { closeSettingsPanel(); return }
+    if (expandModal.classList.contains('open')) { closeModal(expandModal); return }
+    if (createModal.classList.contains('open')) { closeModal(createModal); return }
+    const seeAllModal = document.getElementById('see-all-modal')
+    if (seeAllModal.classList.contains('open')) { closeModal(seeAllModal); return }
+  })
+
   // Settings panel
   settingsBtn.addEventListener('click', openSettingsPanel)
   closeSettingsBtn.addEventListener('click', closeSettingsPanel)
@@ -227,16 +224,14 @@ function handleFormSubmit(e) {
     rotation: Math.floor(Math.random() * 7) - 3
   }
   
-  // Handle image upload
+  // Handle image upload (compress to fit localStorage)
   if (imageInput.files && imageInput.files[0]) {
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      note.image = event.target.result
+    compressImage(imageInput.files[0]).then((dataUrl) => {
+      note.image = dataUrl
       addNote(note)
       closeModal(createModal)
       resetForm()
-    }
-    reader.readAsDataURL(imageInput.files[0])
+    })
   } else {
     addNote(note)
     closeModal(createModal)
@@ -296,6 +291,42 @@ function resetForm() {
   if (preview) preview.innerHTML = ''
   const dropzone = document.getElementById('create-dropzone')
   if (dropzone) dropzone.style.display = ''
+}
+
+/**
+ * Compress an image file to fit within MAX_IMAGE_BYTES as a base64 data URL.
+ * Returns a promise that resolves to the data URL string.
+ */
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      // Scale down if needed so the longer side is at most 1200px
+      const MAX_DIM = 1200
+      let { width, height } = img
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height)
+        width = Math.round(width * ratio)
+        height = Math.round(height * ratio)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, width, height)
+      // Start at quality 0.85, reduce until under limit
+      let quality = 0.85
+      let dataUrl = canvas.toDataURL('image/jpeg', quality)
+      while (dataUrl.length > MAX_IMAGE_BYTES && quality > 0.1) {
+        quality -= 0.1
+        dataUrl = canvas.toDataURL('image/jpeg', quality)
+      }
+      resolve(dataUrl)
+    }
+    img.src = url
+  })
 }
 
 function showCreatePreview(file) {
@@ -594,13 +625,11 @@ function openExpandModal(note) {
     const imageInput = content.querySelector('.expand-image-input')
     const handleFile = (file) => {
       if (!file || !file.type.startsWith('image/')) return
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        noteData.image = ev.target.result
+      compressImage(file).then((dataUrl) => {
+        noteData.image = dataUrl
         saveNotes()
         renderExpandContent()
-      }
-      reader.readAsDataURL(file)
+      })
     }
 
     if (imageInput) {
@@ -729,32 +758,40 @@ function renderMobileNotes() {
 }
 
 function startMobileReorder(fromIndex, dragEl, grid, startEvent) {
-  const cards = Array.from(grid.querySelectorAll('.mobile-note'))
-  const rects = cards.map(c => c.getBoundingClientRect())
+  let currentIndex = fromIndex
 
   function onMove(e) {
     e.preventDefault()
     const touch = e.touches[0]
 
-    // Find which card we're over
-    for (let i = 0; i < rects.length; i++) {
-      if (i === fromIndex) continue
-      const r = rects[i]
+    // Re-query rects each move since DOM may have changed
+    const currentCards = Array.from(
+      document.querySelectorAll('.mobile-grid .mobile-note')
+    )
+    for (let i = 0; i < currentCards.length; i++) {
+      if (i === currentIndex) continue
+      const r = currentCards[i].getBoundingClientRect()
       if (touch.clientX >= r.left && touch.clientX <= r.right &&
           touch.clientY >= r.top && touch.clientY <= r.bottom) {
         // Swap in array
-        const temp = notes[fromIndex]
-        notes.splice(fromIndex, 1)
+        const temp = notes[currentIndex]
+        notes.splice(currentIndex, 1)
         notes.splice(i, 0, temp)
+        currentIndex = i
         saveNotes()
+        // Re-render and re-mark the dragged card
         renderNotes()
+        const newCards = document.querySelectorAll('.mobile-grid .mobile-note')
+        if (newCards[i]) newCards[i].classList.add('mobile-dragging')
         return
       }
     }
   }
 
   function onEnd() {
-    dragEl.classList.remove('mobile-dragging')
+    // Clear dragging style from whatever card has it
+    const dragging = document.querySelector('.mobile-note.mobile-dragging')
+    if (dragging) dragging.classList.remove('mobile-dragging')
     document.removeEventListener('touchmove', onMove)
     document.removeEventListener('touchend', onEnd)
   }
@@ -900,5 +937,5 @@ function escapeHtml(text) {
   if (!text) return ''
   const div = document.createElement('div')
   div.textContent = text
-  return div.innerHTML
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }

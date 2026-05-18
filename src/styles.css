@@ -211,12 +211,12 @@ body {
   line-height: 1.4;
   break-inside: avoid;
   animation: noteEnter 0.4s cubic-bezier(0.17, 0.89, 0.32, 1.28) forwards;
-  transform: scale(0.8);
+  opacity: 0;
 }
 
 @keyframes noteEnter {
-  0% { transform: scale(0.8); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 .note.dragging {
@@ -252,6 +252,7 @@ body {
   border-radius: 3px;
 }
 
+.note-rotate-0 { transform: rotate(0deg); }
 .note-rotate--3 { transform: rotate(-3deg); }
 .note-rotate--2 { transform: rotate(-2deg); }
 .note-rotate--1 { transform: rotate(-1deg); }
@@ -696,37 +697,6 @@ body {
   object-fit: cover;
   margin-top: 4px;
   border-radius: 2px;
-}
-
-.save-btn {
-  padding: 8px 24px;
-  background: var(--color-accent, #e07a5f);
-  border: none;
-  border-radius: 6px;
-  color: white;
-  font-size: 14px;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.save-btn:hover {
-  opacity: 0.85;
-}
-
-.delete-btn {
-  padding: 8px 16px;
-  background: transparent;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
-
-.delete-btn:hover {
-  color: #d32f2f;
-  border-color: #d32f2f;
 }
 
 /* Ghost Notes for Empty State */

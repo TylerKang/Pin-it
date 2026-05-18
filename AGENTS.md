@@ -147,3 +147,4 @@ Checklist before commit:
 | 2025-05-18 | Create modal — labeled sections, dropzone, preview | index.html, styles.css, main.js |
 | 2025-05-18 | Canvas grid background (lines + dots) | styles.css, main.js |
 | 2025-05-18 | Repo harness — CLAUDE.md, AGENTS.md, .gitignore | repo root |
+| 2026-05-18 | Fix rotation overridden by noteEnter animation, fix mobile reorder stale rects, fix escapeHtml quote injection, fix stray closing div, add image compression (1MB cap), add Escape key for modals, remove dead CSS/unused const/redundant fn, bump version to 0.1.0 | main.js, styles.css, index.html, package.json |
