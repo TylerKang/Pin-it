@@ -5,3 +5,21 @@ dist/
 .env
 .env.*
 .claude/
+
+# Certificates, keys, and provisioning profiles
+*.provisionprofile
+*.mobileprovision
+*.p12
+*.p8
+*.pem
+*.key
+*.keystore
+*.jks
+*.pfx
+*.cer
+*.cert
+
+# Environment secrets
+.env.local
+.env*.local
+!.env.example
