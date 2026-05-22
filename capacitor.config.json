@@ -1,0 +1,12 @@
+{
+  "appId": "com.devsky.pinit",
+  "appName": "Pin-It — Sticky Note Board",
+  "webDir": "dist",
+  "ios": {
+    "scheme": "Pin-It",
+    "contentInset": "automatic"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -6,6 +6,22 @@ dist/
 .env.*
 .claude/
 
+# Build outputs
+release/
+build/bdist.*
+build/lib/
+build/temp.*
+
+# Capacitor iOS native project (regenerable via `npx cap add ios`)
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App/public/
+ios/.xcode.env.local
+
+# Generated iconset (regenerable via scripts/generate-icons.sh)
+assets/icon.iconset/
+
 # Certificates, keys, and provisioning profiles
 *.provisionprofile
 *.mobileprovision

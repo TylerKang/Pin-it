@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Mac App Store entitlements for Pin-It — Sticky Note Board -->
+    <!-- Sandboxed (required by MAS) -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- Firebase Auth + Firestore + Sentry need outbound network -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- User-initiated import/export of board JSON files -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Team + bundle binding -->
+    <key>com.apple.application-identifier</key>
+    <string>G9342ZMQ59.com.devsky.pinit</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>G9342ZMQ59</string>
+</dict>
+</plist>
