@@ -96,12 +96,13 @@
       <div class="panel-content">
         <div class="settings-section">
           <h3>Sync</h3>
+          <p class="settings-hint">Pair this device with another using a one-time code. Codes expire after 10 minutes.</p>
           <div class="sync-code" id="sync-code-display">------</div>
           <button id="copy-code-btn" class="copy-btn">Copy Code</button>
-          <input type="text" id="import-code" placeholder="Enter device code to import" maxlength="8" />
+          <input type="text" id="import-code" placeholder="Enter code from another device" maxlength="6" />
           <div class="sync-actions">
-            <button id="import-btn" class="secondary">Import</button>
-            <button id="sync-btn" class="primary">Sync Now</button>
+            <button id="import-btn" class="secondary">Pair</button>
+            <button id="sync-btn" class="primary">Generate sharing code</button>
           </div>
           <div class="status-indicator local" id="sync-status">
             <span class="status-dot"></span>
@@ -110,7 +111,7 @@
         </div>
         <div class="settings-section">
           <h3>About</h3>
-          <p class="version">Version <span>0.1.0</span></p>
+          <p class="version">Version <span>1.0.0</span></p>
         </div>
       </div>
     </div>

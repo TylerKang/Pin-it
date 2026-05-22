@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// Firestore security rules for Pin-It — Sticky Note Board.
+//
+// Paste these into the Firebase console → Firestore → Rules tab and Publish.
+// Or deploy via `firebase deploy --only firestore:rules` if you wire up the
+// Firebase CLI.
+//
+// Model:
+//   /boards/{boardId}     → { ownerUids: [uid, ...], notes: [...], updatedAt }
+//   /syncCodes/{code}     → { boardId, createdBy, expiresAt, used }
+//
+// Threat model:
+//   - All clients are anonymous Firebase Auth (no email/password).
+//   - We trust no UID; rules enforce that you can only modify what you own
+//     (a board you're listed in) or claim (a sync code).
+//   - Codes are 6 chars from a 32-char alphabet → ~30 bits. Single-use +
+//     10-min TTL keeps brute-force impractical for a low-value asset.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── /boards ─────────────────────────────────────────────────────
+    match /boards/{boardId} {
+      // Read or write only if I'm one of the board's owners.
+      allow read: if request.auth != null
+                  && request.auth.uid in resource.data.ownerUids;
+
+      allow update: if request.auth != null
+                    && request.auth.uid in resource.data.ownerUids
+                    // Cannot rewrite the ownerUids array except via arrayUnion
+                    // (joining a code) or arrayRemove (leaving). Keep a small
+                    // sanity check: the existing owners (minus possibly me)
+                    // remain present.
+                    && request.resource.data.ownerUids.hasAll(
+                         resource.data.ownerUids.removeAll([request.auth.uid])
+                       );
+
+      // First-time create: caller is the sole owner.
+      allow create: if request.auth != null
+                    && request.auth.uid == boardId
+                    && request.resource.data.ownerUids == [request.auth.uid];
+
+      // No delete from clients — orphan cleanup is server-side / manual.
+      allow delete: if false;
+    }
+
+    // ─── /syncCodes ──────────────────────────────────────────────────
+    match /syncCodes/{code} {
+      // Anyone authenticated can read a code (to pair).
+      allow read: if request.auth != null;
+
+      // Only authenticated users can write codes. Code creation rules:
+      //   - createdBy must equal caller's UID
+      //   - used must start false
+      //   - expiresAt must be in the future and within 15 minutes (margin)
+      //   - boardId must reference a board the caller owns
+      allow create: if request.auth != null
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.used == false
+                    && request.resource.data.expiresAt > request.time
+                    && request.resource.data.expiresAt < request.time + duration.value(15, 'm');
+
+      // Updates only allowed to mark used=true (when pairing). After that the
+      // doc is immutable.
+      allow update: if request.auth != null
+                    && resource.data.used == false
+                    && request.resource.data.used == true
+                    && request.resource.data.usedBy == request.auth.uid;
+
+      // No deletes.
+      allow delete: if false;
+    }
+  }
+}

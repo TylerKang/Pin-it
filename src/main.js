@@ -1,5 +1,20 @@
 // Pin-It: A digital pegboard with sticky notes
-import { generateSyncCode, getSyncCode, setSyncCode, exportBoardData, importBoardData } from './sync.js'
+import {
+  initSync,
+  pushBoard,
+  subscribeBoard,
+  generateShareCode,
+  pairWithCode,
+  unpair,
+  getPairedState
+} from './sync.js'
+import { FIREBASE_CONFIGURED } from './firebase.js'
+import { initSentry } from './sentry.js'
+
+initSentry({
+  release: `pin-it@${__APP_VERSION__ || '1.0.0'}`,
+  environment: import.meta.env.MODE
+})
 
 const COLORS = [
   '#FFF9C4', // yellow
@@ -49,13 +64,41 @@ const syncBtn = document.getElementById('sync-btn')
 const syncStatus = document.getElementById('sync-status')
 
 // Initialize
+let _remoteUnsubscribe = () => {}
+let _pendingShareCode = null
+let _pendingShareCodeExpiry = null
+
 document.addEventListener('DOMContentLoaded', () => {
   loadNotes()
   if (!isMobile) clampAllNotes()
   renderNotes()
   setupEventListeners()
   window.addEventListener('resize', handleResize)
+  bootSync()
 })
+
+async function bootSync() {
+  if (!FIREBASE_CONFIGURED) return
+  try {
+    const initResult = await initSync()
+    if (!initResult) return
+    // Subscribe to remote updates. Pull-then-merge: remote wins on conflict
+    // since other devices may have edited concurrently.
+    _remoteUnsubscribe = subscribeBoard((remoteNotes, meta) => {
+      if (meta.hasPendingWrites) return // ignore our own optimistic write echo
+      if (!Array.isArray(remoteNotes)) return
+      // Replace local state with remote and re-render. The local UI is the
+      // edit canvas; remote is the source of truth for the active board.
+      notes = remoteNotes
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
+      renderNotes()
+    })
+    // First push: ensure remote knows about whatever we already had locally.
+    if (notes.length > 0) pushBoard(notes).catch(() => {})
+  } catch (err) {
+    console.error('[pin-it] Sync boot failed:', err)
+  }
+}
 
 function handleResize() {
   const wasMobile = isMobile
@@ -697,8 +740,20 @@ function deleteNote(id) {
   renderNotes()
 }
 
+let _pushDebounceId = null
 function saveNotes() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
+  // Debounced cloud push so rapid drags don't spam Firestore. Snapshot the
+  // notes reference now in case it mutates before the timeout fires.
+  if (FIREBASE_CONFIGURED) {
+    clearTimeout(_pushDebounceId)
+    const snapshot = notes.slice()
+    _pushDebounceId = setTimeout(() => {
+      pushBoard(snapshot).catch((err) => {
+        console.warn('[pin-it] Cloud push failed:', err)
+      })
+    }, 600)
+  }
 }
 
 function loadNotes() {
@@ -863,18 +918,11 @@ function openSeeAllModal() {
   openModal(modal)
 }
 
-// Settings Panel
+// ───── Settings Panel & Sync UI ────────────────────────────────────────
 function openSettingsPanel() {
   settingsPanel.classList.add('open')
   settingsBackdrop.classList.add('visible')
-
-  // Generate sync code if we don't have one
-  let code = getSyncCode()
-  if (!code) {
-    code = generateSyncCode()
-    setSyncCode(code)
-  }
-  syncCodeDisplay.textContent = code
+  refreshSyncStatus()
 }
 
 function closeSettingsPanel() {
@@ -882,55 +930,134 @@ function closeSettingsPanel() {
   settingsBackdrop.classList.remove('visible')
 }
 
+async function refreshSyncStatus() {
+  if (!FIREBASE_CONFIGURED) {
+    syncCodeDisplay.textContent = '------'
+    syncBtn.textContent = 'Cloud sync unavailable'
+    syncBtn.disabled = true
+    setStatus('Local only — cloud sync not configured', 'local')
+    return
+  }
+  syncBtn.disabled = false
+  // If we have a freshly generated code that hasn't expired, keep it visible
+  // with a countdown. Otherwise show the placeholder.
+  if (_pendingShareCode && _pendingShareCodeExpiry > Date.now()) {
+    syncCodeDisplay.textContent = _pendingShareCode
+  } else {
+    _pendingShareCode = null
+    _pendingShareCodeExpiry = null
+    syncCodeDisplay.textContent = '------'
+  }
+  try {
+    const state = await getPairedState()
+    if (state.paired) {
+      syncBtn.textContent = 'Unpair this device'
+      setStatus(
+        `Synced — ${state.deviceCount} device${state.deviceCount === 1 ? '' : 's'}`,
+        'synced'
+      )
+    } else {
+      syncBtn.textContent = 'Generate sharing code'
+      setStatus('Local only — generate a code to share this board', 'local')
+    }
+  } catch (err) {
+    setStatus('Sync status unavailable', 'error')
+  }
+}
+
 function copySyncCode() {
   const code = syncCodeDisplay.textContent
   if (!code || code === '------') return
-
-  navigator.clipboard.writeText(code).then(() => {
-    copyCodeBtn.textContent = 'Copied!'
-    setTimeout(() => { copyCodeBtn.textContent = 'Copy Code' }, 1500)
-  }).catch(() => {
-    // Fallback for browsers without clipboard API
-    copyCodeBtn.textContent = 'Copy failed'
-    setTimeout(() => { copyCodeBtn.textContent = 'Copy Code' }, 1500)
-  })
+  navigator.clipboard
+    .writeText(code)
+    .then(() => {
+      copyCodeBtn.textContent = 'Copied!'
+      setTimeout(() => {
+        copyCodeBtn.textContent = 'Copy Code'
+      }, 1500)
+    })
+    .catch(() => {
+      copyCodeBtn.textContent = 'Copy failed'
+      setTimeout(() => {
+        copyCodeBtn.textContent = 'Copy Code'
+      }, 1500)
+    })
 }
 
-function handleImport() {
-  const code = importCodeInput.value.trim().toUpperCase()
-  if (!code || code.length !== 8) {
-    showSyncStatus('Invalid code — must be 8 characters', 'error')
-    return
-  }
-
-  // For now, store the import code locally. Real sync uses Firebase later.
-  showSyncStatus('Import code saved. Sync not yet connected to backend.', 'local')
-  importCodeInput.value = ''
-}
-
-function handleSync() {
-  const code = getSyncCode()
+async function handleImport() {
+  const code = (importCodeInput.value || '').trim().toUpperCase()
   if (!code) {
-    showSyncStatus('No sync code. Open settings to generate one.', 'error')
+    setStatus('Enter a code first', 'error')
     return
   }
-
-  // Export current board data (ready for Firebase push later)
-  const data = exportBoardData(notes)
-  localStorage.setItem('pin-it-board-data', JSON.stringify(data))
-  showSyncStatus('Board data saved locally. Backend sync coming soon.', 'local')
+  if (!FIREBASE_CONFIGURED) {
+    setStatus('Cloud sync unavailable', 'error')
+    return
+  }
+  importBtn.disabled = true
+  importBtn.textContent = 'Pairing…'
+  try {
+    const result = await pairWithCode(code)
+    importCodeInput.value = ''
+    setStatus(`Paired — ${result.deviceCount} devices`, 'synced')
+    // Re-subscribe to the new active board.
+    _remoteUnsubscribe()
+    _remoteUnsubscribe = subscribeBoard((remoteNotes, meta) => {
+      if (meta.hasPendingWrites) return
+      if (!Array.isArray(remoteNotes)) return
+      notes = remoteNotes
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
+      renderNotes()
+    })
+    setTimeout(refreshSyncStatus, 800)
+  } catch (err) {
+    setStatus(err.message || 'Could not pair', 'error')
+  } finally {
+    importBtn.disabled = false
+    importBtn.textContent = 'Import'
+  }
 }
 
-function showSyncStatus(message, type) {
-  syncStatus.className = `status-indicator ${type}`
-  syncStatus.innerHTML = `<span class="status-dot"></span><span>${message}</span>`
-  // Reset after a few seconds
-  if (type !== 'local') {
-    setTimeout(() => {
-      syncStatus.className = 'status-indicator local'
-      syncStatus.innerHTML = '<span class="status-dot"></span><span>Local only</span>'
-    }, 3000)
+async function handleSync() {
+  if (!FIREBASE_CONFIGURED) return
+  syncBtn.disabled = true
+  try {
+    const state = await getPairedState()
+    if (state.paired) {
+      // Unpair flow
+      await unpair()
+      setStatus('Unpaired — back to local board', 'local')
+      // Re-subscribe to own board
+      _remoteUnsubscribe()
+      _remoteUnsubscribe = subscribeBoard((remoteNotes, meta) => {
+        if (meta.hasPendingWrites) return
+        if (!Array.isArray(remoteNotes)) return
+        notes = remoteNotes
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
+        renderNotes()
+      })
+    } else {
+      // Generate code flow
+      const { code, expiresAt } = await generateShareCode()
+      _pendingShareCode = code
+      _pendingShareCodeExpiry = expiresAt.getTime()
+      syncCodeDisplay.textContent = code
+      setStatus(
+        `Share this code — expires in ${Math.round((expiresAt.getTime() - Date.now()) / 60000)} min`,
+        'pending'
+      )
+    }
+  } catch (err) {
+    setStatus(err.message || 'Operation failed', 'error')
+  } finally {
+    syncBtn.disabled = false
+    setTimeout(refreshSyncStatus, 800)
   }
+}
+
+function setStatus(message, type) {
+  syncStatus.className = `status-indicator ${type}`
+  syncStatus.innerHTML = `<span class="status-dot"></span><span>${escapeHtml(message)}</span>`
 }
 
 function escapeHtml(text) {

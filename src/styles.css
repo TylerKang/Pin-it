@@ -877,6 +877,13 @@ body {
   margin-bottom: 12px;
 }
 
+.settings-section .settings-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0 0 12px 0;
+}
+
 .settings-section .sync-code {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 24px;

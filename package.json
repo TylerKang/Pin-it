@@ -16,6 +16,7 @@
     "ios:open": "cap open ios"
   },
   "dependencies": {
+    "@sentry/browser": "^10.53.1",
     "firebase": "^10.13.0"
   },
   "devDependencies": {
@@ -38,7 +39,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ]
     },
@@ -50,7 +53,9 @@
       "target": [
         {
           "target": "mas",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ]
     },
