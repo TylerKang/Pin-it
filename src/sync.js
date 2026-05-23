@@ -1,26 +1,39 @@
 // Sync module for Pin-It — Sticky Note Board.
 //
-// Code-pair model over Firebase Anonymous Auth + Firestore.
+// Code-pair model over Firebase Anonymous Auth + Firestore, with per-note
+// document storage so concurrent edits to different notes don't clobber
+// each other.
 //
-// Each anonymous user owns one board document at /boards/{uid}, and the
-// app reads/writes to whichever board is currently active (defaults to
-// the user's own; switches to a paired board after pairing).
+// Storage shape:
+//   /boards/{boardId}                      → { ownerUids[], createdAt, updatedAt }
+//   /boards/{boardId}/notes/{noteId}       → serialized note + `order`
+//   /syncCodes/{code}                      → ephemeral pairing ticket
+//
+// Conflict model:
+//   - Whole-array writes are AVOIDED. Each save diffs against the last
+//     known-published snapshot and emits only per-note writes/deletes.
+//   - Two devices editing DIFFERENT notes → both succeed, no loss.
+//   - Two devices editing the SAME note → last write wins on a per-field
+//     basis. Server timestamp on `updatedAt` provides tiebreaking visibility.
+//   - Two devices ADDING new notes → both succeed (different ids); the
+//     `order` field gives stable display sort.
 //
 // Pairing flow:
-//   Device A: generateShareCode() → writes a /syncCodes/{CODE} doc that
-//             points at A's board, valid for 10 minutes, single-use.
-//   Device B: pairWithCode(CODE)  → reads /syncCodes/{CODE}, atomically
-//             adds B's UID to /boards/{boardId}.ownerUids, marks the code
-//             used, and switches B's active board to A's.
+//   Device A: generateShareCode() → /syncCodes/CODE { boardId: A's board }
+//   Device B: pairWithCode(CODE)  → arrayUnion(B.uid) → /boards/{A}.ownerUids
+//                                  → switches B's active board to A's
 //
-// When Firebase is not configured, every function becomes a no-op that
-// returns sensible local-only results so the rest of the app keeps working.
+// When Firebase is not configured, every function becomes a no-op so the
+// app keeps working in local-only mode.
 
 import {
   doc,
+  collection,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   serverTimestamp,
   arrayUnion,
@@ -50,45 +63,64 @@ function getActiveBoardId() {
 }
 
 function setActiveBoardId(boardId) {
-  if (boardId) {
-    localStorage.setItem(ACTIVE_BOARD_KEY, boardId)
-  } else {
-    localStorage.removeItem(ACTIVE_BOARD_KEY)
+  if (boardId) localStorage.setItem(ACTIVE_BOARD_KEY, boardId)
+  else localStorage.removeItem(ACTIVE_BOARD_KEY)
+}
+
+function notesCollectionRef(boardId) {
+  return collection(db, 'boards', boardId, 'notes')
+}
+
+function noteDocRef(boardId, noteId) {
+  return doc(db, 'boards', boardId, 'notes', String(noteId))
+}
+
+function serializeNote(n, indexFallback = 0) {
+  return {
+    id: String(n.id),
+    title: n.title || '',
+    body: n.body || '',
+    color: n.color || '',
+    x: typeof n.x === 'number' ? n.x : 0,
+    y: typeof n.y === 'number' ? n.y : 0,
+    image: n.image || null,
+    rotation: typeof n.rotation === 'number' ? n.rotation : 0,
+    order: typeof n.order === 'number' ? n.order : indexFallback
   }
+}
+
+// Stable string key used to detect "did this note change since last push?"
+// Excludes updatedAt/updatedBy (server-stamped, not part of intent).
+function noteFingerprint(n) {
+  const s = serializeNote(n, 0)
+  return JSON.stringify([s.id, s.title, s.body, s.color, s.x, s.y, s.image, s.rotation, s.order])
 }
 
 // ───── public API ───────────────────────────────────────────────────────
 
 /**
  * Boot sync. Resolves once Anonymous Auth completes and the local board
- * doc (`/boards/{uid}`) is ensured to exist. Defaults active board to
- * the user's own UID.
- *
- * Returns { uid, boardId } or null if Firebase isn't configured.
+ * doc (`/boards/{uid}`) is ensured to exist. Default active board = my UID.
+ * Returns { uid, boardId } or null in local-only mode.
  */
 export async function initSync() {
   if (!FIREBASE_CONFIGURED) return null
-
   const uid = await getUid()
   if (!uid) return null
 
-  // Default active board = my own board (first launch)
   let active = getActiveBoardId()
   if (!active) {
     active = uid
     setActiveBoardId(active)
   }
 
-  // Ensure my own board document exists. (We always own /boards/{uid};
-  // even if currently joined to someone else's, our own stays.)
   const myBoardRef = doc(db, 'boards', uid)
   const snap = await getDoc(myBoardRef)
   if (!snap.exists()) {
     await setDoc(myBoardRef, {
       ownerUids: [uid],
-      notes: [],
-      updatedAt: serverTimestamp(),
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     })
   }
 
@@ -96,60 +128,122 @@ export async function initSync() {
 }
 
 /**
- * Push the current notes array up to the active board.
- * No-op in local-only mode.
+ * Push a single note (create or update). Caller passes the note object;
+ * we serialize and write it to /boards/{activeBoardId}/notes/{note.id}.
  */
-export async function pushBoard(notes) {
+export async function pushNote(note, indexFallback = 0) {
   if (!FIREBASE_CONFIGURED) return
   const uid = await getUid()
   if (!uid) return
   const boardId = getActiveBoardId() || uid
-  const ref = doc(db, 'boards', boardId)
-  await updateDoc(ref, {
-    notes: notes.map(serializeNote),
-    updatedAt: serverTimestamp()
-  }).catch((err) => {
-    // If the doc doesn't exist yet (race on first launch), create it.
-    if (err.code === 'not-found') {
-      return setDoc(ref, {
-        ownerUids: [uid],
-        notes: notes.map(serializeNote),
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp()
-      })
-    }
-    throw err
-  })
+  const payload = {
+    ...serializeNote(note, indexFallback),
+    updatedAt: serverTimestamp(),
+    updatedBy: uid
+  }
+  await setDoc(noteDocRef(boardId, note.id), payload, { merge: true })
 }
 
 /**
- * Subscribe to remote changes to the active board. `onChange(notes, meta)`
- * fires every time the board doc updates remotely (or locally — Firestore
- * dispatches both with metadata.hasPendingWrites).
- *
- * Returns an unsubscribe function, or a no-op if Firebase isn't configured.
+ * Delete a single note by id.
  */
-export function subscribeBoard(onChange) {
+export async function deleteNote(noteId) {
+  if (!FIREBASE_CONFIGURED) return
+  const uid = await getUid()
+  if (!uid) return
+  const boardId = getActiveBoardId() || uid
+  await deleteDoc(noteDocRef(boardId, noteId))
+}
+
+/**
+ * Subscribe to the active board's notes subcollection. `onChange(notes, meta)`
+ * fires with the sorted notes array on every remote update.
+ *
+ * `meta.hasPendingWrites` is true when the snapshot reflects our own
+ * unflushed local writes — caller should typically ignore those to avoid
+ * round-trip thrash.
+ */
+export function subscribeNotes(onChange) {
   if (!FIREBASE_CONFIGURED) return () => {}
   let unsub = () => {}
   ;(async () => {
     const uid = await getUid()
     if (!uid) return
     const boardId = getActiveBoardId() || uid
-    const ref = doc(db, 'boards', boardId)
-    unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return
-      const data = snap.data()
-      onChange(data.notes || [], {
-        ownerUids: data.ownerUids || [],
+    unsub = onSnapshot(notesCollectionRef(boardId), (snap) => {
+      const notes = []
+      snap.forEach((d) => notes.push(d.data()))
+      notes.sort((a, b) => (a.order || 0) - (b.order || 0))
+      onChange(notes, {
         boardId,
-        fromCache: snap.metadata.fromCache,
-        hasPendingWrites: snap.metadata.hasPendingWrites
+        hasPendingWrites: snap.metadata.hasPendingWrites,
+        fromCache: snap.metadata.fromCache
       })
     })
   })()
   return () => unsub()
 }
+
+/**
+ * One-shot read of all notes in the active board (used when first booting
+ * a paired device to seed local state before the subscription warms up).
+ */
+export async function fetchAllNotes() {
+  if (!FIREBASE_CONFIGURED) return []
+  const uid = await getUid()
+  if (!uid) return []
+  const boardId = getActiveBoardId() || uid
+  const snap = await getDocs(notesCollectionRef(boardId))
+  const notes = []
+  snap.forEach((d) => notes.push(d.data()))
+  notes.sort((a, b) => (a.order || 0) - (b.order || 0))
+  return notes
+}
+
+/**
+ * Diff a current notes array against a fingerprint map of last-known
+ * pushed state, and emit the right per-note writes/deletes. Returns the
+ * new fingerprint map for the caller to retain.
+ *
+ * Caller pattern:
+ *   const next = await syncDiff(notes, lastSnapshot)
+ *   lastSnapshot = next
+ */
+export async function syncDiff(notes, lastFingerprints) {
+  if (!FIREBASE_CONFIGURED) return new Map()
+  const next = new Map()
+  const tasks = []
+  notes.forEach((n, i) => {
+    const fp = noteFingerprint({ ...n, order: typeof n.order === 'number' ? n.order : i })
+    next.set(String(n.id), fp)
+    if (lastFingerprints.get(String(n.id)) !== fp) {
+      tasks.push(pushNote(n, i))
+    }
+  })
+  // Deletes
+  lastFingerprints.forEach((_fp, id) => {
+    if (!next.has(id)) tasks.push(deleteNote(id))
+  })
+  await Promise.all(tasks).catch((err) => {
+    console.warn('[pin-it] syncDiff partial failure:', err)
+  })
+  return next
+}
+
+/**
+ * Build a fingerprint map from a notes array (used to seed lastSnapshot
+ * after pulling remote state, so the next saveNotes() doesn't echo-push
+ * everything back).
+ */
+export function fingerprintAll(notes) {
+  const map = new Map()
+  notes.forEach((n, i) => {
+    map.set(String(n.id), noteFingerprint({ ...n, order: typeof n.order === 'number' ? n.order : i }))
+  })
+  return map
+}
+
+// ───── pairing ──────────────────────────────────────────────────────────
 
 /**
  * Generate a fresh single-use pairing code that points at this device's
@@ -179,7 +273,6 @@ export async function generateShareCode() {
  * points at, marks the code used, and switches the active board locally.
  *
  * Returns { boardId, deviceCount }.
- * Throws if code is missing, expired, already used, or write fails.
  */
 export async function pairWithCode(rawCode) {
   if (!FIREBASE_CONFIGURED) {
@@ -211,7 +304,6 @@ export async function pairWithCode(rawCode) {
   })
 
   setActiveBoardId(boardId)
-  // Caller should reload notes via subscribeBoard after this resolves.
   const boardSnap = await getDoc(doc(db, 'boards', boardId))
   const data = boardSnap.data() || {}
   return { boardId, deviceCount: (data.ownerUids || []).length }
@@ -226,19 +318,15 @@ export async function unpair() {
   const uid = await getUid()
   if (!uid) return
   const boardId = getActiveBoardId()
-  if (!boardId || boardId === uid) return // already on own board
-
-  // Remove my UID from the joined board's owners.
+  if (!boardId || boardId === uid) return
   await updateDoc(doc(db, 'boards', boardId), {
     ownerUids: arrayRemove(uid)
   }).catch(() => {})
-
   setActiveBoardId(uid)
 }
 
 /**
  * Current paired state, for status display.
- * { paired: boolean, boardId, isOwnBoard, deviceCount? }
  */
 export async function getPairedState() {
   if (!FIREBASE_CONFIGURED) {
@@ -251,29 +339,12 @@ export async function getPairedState() {
   let deviceCount = 1
   try {
     const snap = await getDoc(doc(db, 'boards', boardId))
-    if (snap.exists()) {
-      deviceCount = (snap.data().ownerUids || []).length
-    }
+    if (snap.exists()) deviceCount = (snap.data().ownerUids || []).length
   } catch {}
   return {
     paired: deviceCount > 1 || !isOwnBoard,
     boardId,
     isOwnBoard,
     deviceCount
-  }
-}
-
-// ───── note (de)serialization ───────────────────────────────────────────
-
-function serializeNote(n) {
-  return {
-    id: n.id,
-    title: n.title || '',
-    body: n.body || '',
-    color: n.color || '',
-    x: n.x || 0,
-    y: n.y || 0,
-    image: n.image || null,
-    rotation: n.rotation || 0
   }
 }

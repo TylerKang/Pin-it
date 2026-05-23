@@ -1,8 +1,9 @@
 // Pin-It: A digital pegboard with sticky notes
 import {
   initSync,
-  pushBoard,
-  subscribeBoard,
+  subscribeNotes,
+  syncDiff,
+  fingerprintAll,
   generateShareCode,
   pairWithCode,
   unpair,
@@ -74,6 +75,11 @@ const syncStatus = document.getElementById('sync-status')
 let _remoteUnsubscribe = () => {}
 let _pendingShareCode = null
 let _pendingShareCodeExpiry = null
+// Fingerprint of last-known pushed state, keyed by note id. Used by saveNotes
+// to compute the diff to push (only changed/added notes are written; removed
+// notes are deleted). Replaced after every remote pull so we don't echo-push.
+let _lastPushedFingerprints = new Map()
+let _suppressFirstSubscribeOverride = false
 
 document.addEventListener('DOMContentLoaded', () => {
   loadNotes()
@@ -89,22 +95,49 @@ async function bootSync() {
   try {
     const initResult = await initSync()
     if (!initResult) return
-    // Subscribe to remote updates. Pull-then-merge: remote wins on conflict
-    // since other devices may have edited concurrently.
-    _remoteUnsubscribe = subscribeBoard((remoteNotes, meta) => {
-      if (meta.hasPendingWrites) return // ignore our own optimistic write echo
-      if (!Array.isArray(remoteNotes)) return
-      // Replace local state with remote and re-render. The local UI is the
-      // edit canvas; remote is the source of truth for the active board.
-      notes = remoteNotes
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
-      renderNotes()
-    })
-    // First push: ensure remote knows about whatever we already had locally.
-    if (notes.length > 0) pushBoard(notes).catch(() => {})
+
+    // First subscribe: if remote is empty and we have local notes, push
+    // them up (newly-enabled sync, preserves local-only work). If remote
+    // has notes, replace local with remote (paired device or returning user).
+    _suppressFirstSubscribeOverride = notes.length > 0
+    _remoteUnsubscribe = wireSubscribe()
   } catch (err) {
     console.error('[pin-it] Sync boot failed:', err)
   }
+}
+
+function wireSubscribe() {
+  let firstFire = true
+  return subscribeNotes((remoteNotes, meta) => {
+    if (meta.hasPendingWrites) return // echoes of our own writes
+
+    if (firstFire) {
+      firstFire = false
+      if (remoteNotes.length === 0 && _suppressFirstSubscribeOverride) {
+        // Cloud is empty but we have local notes → push them up.
+        _lastPushedFingerprints = new Map() // empty → diff will push everything
+        saveNotes() // triggers the debounced push of all notes
+        return
+      }
+    }
+
+    // Otherwise: remote is the source of truth. Replace local state.
+    notes = remoteNotes.map((n) => ({
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      color: n.color,
+      x: n.x,
+      y: n.y,
+      image: n.image,
+      rotation: n.rotation,
+      order: n.order
+    }))
+    _lastPushedFingerprints = fingerprintAll(notes)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
+    if (!isMobile) clampAllNotes()
+    renderNotes()
+  })
 }
 
 function handleResize() {
@@ -750,15 +783,19 @@ function deleteNote(id) {
 let _pushDebounceId = null
 function saveNotes() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
-  // Debounced cloud push so rapid drags don't spam Firestore. Snapshot the
-  // notes reference now in case it mutates before the timeout fires.
+  // Debounced per-note diff push: only changed/added/removed notes hit
+  // Firestore. Avoids whole-array clobbers between concurrent devices.
   if (FIREBASE_CONFIGURED) {
     clearTimeout(_pushDebounceId)
-    const snapshot = notes.slice()
-    _pushDebounceId = setTimeout(() => {
-      pushBoard(snapshot).catch((err) => {
-        console.warn('[pin-it] Cloud push failed:', err)
-      })
+    _pushDebounceId = setTimeout(async () => {
+      try {
+        // Snapshot order at fire time so the array index → `order` mapping
+        // matches what's currently rendered.
+        const withOrder = notes.map((n, i) => ({ ...n, order: typeof n.order === 'number' ? n.order : i }))
+        _lastPushedFingerprints = await syncDiff(withOrder, _lastPushedFingerprints)
+      } catch (err) {
+        console.warn('[pin-it] syncDiff failed:', err)
+      }
     }, 600)
   }
 }
@@ -1007,15 +1044,12 @@ async function handleImport() {
     const result = await pairWithCode(code)
     importCodeInput.value = ''
     setStatus(`Paired — ${result.deviceCount} devices`, 'synced')
-    // Re-subscribe to the new active board.
+    // Re-subscribe to the new active board (paired). Treat remote as
+    // source of truth — don't push our local notes up to the joined board.
+    _suppressFirstSubscribeOverride = false
+    _lastPushedFingerprints = new Map()
     _remoteUnsubscribe()
-    _remoteUnsubscribe = subscribeBoard((remoteNotes, meta) => {
-      if (meta.hasPendingWrites) return
-      if (!Array.isArray(remoteNotes)) return
-      notes = remoteNotes
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
-      renderNotes()
-    })
+    _remoteUnsubscribe = wireSubscribe()
     setTimeout(refreshSyncStatus, 800)
   } catch (err) {
     setStatus(err.message || 'Could not pair', 'error')
@@ -1034,15 +1068,11 @@ async function handleSync() {
       // Unpair flow
       await unpair()
       setStatus('Unpaired — back to local board', 'local')
-      // Re-subscribe to own board
+      // Re-subscribe to own board.
+      _suppressFirstSubscribeOverride = false
+      _lastPushedFingerprints = new Map()
       _remoteUnsubscribe()
-      _remoteUnsubscribe = subscribeBoard((remoteNotes, meta) => {
-        if (meta.hasPendingWrites) return
-        if (!Array.isArray(remoteNotes)) return
-        notes = remoteNotes
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
-        renderNotes()
-      })
+      _remoteUnsubscribe = wireSubscribe()
     } else {
       // Generate code flow
       const { code, expiresAt } = await generateShareCode()

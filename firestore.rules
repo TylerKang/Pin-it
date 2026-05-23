@@ -7,8 +7,13 @@ rules_version = '2';
 // Firebase CLI.
 //
 // Model:
-//   /boards/{boardId}     → { ownerUids: [uid, ...], notes: [...], updatedAt }
-//   /syncCodes/{code}     → { boardId, createdBy, expiresAt, used }
+//   /boards/{boardId}                         → { ownerUids: [uid, ...], updatedAt, createdAt }
+//   /boards/{boardId}/notes/{noteId}          → { id, title, body, color, x, y, image, rotation, order, updatedAt, updatedBy }
+//   /syncCodes/{code}                         → { boardId, createdBy, expiresAt, used }
+//
+// Per-note documents (not a single notes array on the board) so concurrent
+// edits to different notes don't clobber each other. Each note carries an
+// integer `order` field for stable sort (matching the in-app array index).
 //
 // Threat model:
 //   - All clients are anonymous Firebase Auth (no email/password).
@@ -43,6 +48,19 @@ service cloud.firestore {
 
       // No delete from clients — orphan cleanup is server-side / manual.
       allow delete: if false;
+
+      // ─── /boards/{boardId}/notes ───────────────────────────────────
+      // A note may be read/created/updated/deleted by any owner of the
+      // parent board. Helper get() reads /boards/{boardId} to check
+      // ownerUids — small extra read per write, billable but cheap.
+      match /notes/{noteId} {
+        function isOwner() {
+          return request.auth != null
+            && request.auth.uid in
+               get(/databases/$(database)/documents/boards/$(boardId)).data.ownerUids;
+        }
+        allow read, write, delete: if isOwner();
+      }
     }
 
     // ─── /syncCodes ──────────────────────────────────────────────────
