@@ -16,6 +16,13 @@ initSentry({
   environment: import.meta.env.MODE
 })
 
+// Mark <body> so CSS can apply Electron-only chrome (traffic-light padding,
+// drag region). Renderer userAgent contains "Electron/<ver>" when running
+// inside the Electron BrowserWindow.
+if (/Electron/i.test(navigator.userAgent)) {
+  document.documentElement.classList.add('electron')
+}
+
 const COLORS = [
   '#FFF9C4', // yellow
   '#FFCDD2', // pink

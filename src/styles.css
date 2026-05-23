@@ -51,6 +51,22 @@ body {
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
+/* Electron-only chrome: make the header act as the window drag region and
+   reserve space at the left for the traffic-light buttons (close / min /
+   max) which sit at x=16, y=16 per BrowserWindow trafficLightPosition. The
+   .electron class is added to <html> at startup by src/main.js when running
+   inside the Electron renderer. */
+html.electron .header {
+  padding-left: 88px;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+html.electron .header button,
+html.electron .header input,
+html.electron .header a {
+  -webkit-app-region: no-drag;
+}
+
 .app-name {
   font-size: 16px;
   font-weight: 600;
