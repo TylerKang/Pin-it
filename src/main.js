@@ -1089,7 +1089,7 @@ async function handleImport() {
     setStatus(err.message || 'Could not pair', 'error')
   } finally {
     importBtn.disabled = false
-    importBtn.textContent = 'Import'
+    importBtn.textContent = 'Pair'
   }
 }
 
