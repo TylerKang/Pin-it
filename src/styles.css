@@ -912,20 +912,45 @@ html.electron .header a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-section .sync-code #sync-code-display {
+  user-select: all; /* triple-click selects the code */
+  flex: 1;
 }
 
 .settings-section .copy-btn {
   background: none;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px;
-  font-size: 14px;
-  transition: color 0.2s ease;
+  padding: 6px 10px;
+  font-size: 16px;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
 }
 
-.settings-section .copy-btn:hover {
+.settings-section .copy-btn:hover:not(:disabled) {
   color: var(--color-accent, #e07a5f);
+  border-color: var(--color-accent, #e07a5f);
+  background: rgba(224, 122, 95, 0.06);
+}
+
+.settings-section .copy-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.settings-section .copy-btn.copied {
+  color: #2e7d32;
+  border-color: #2e7d32;
+  background: rgba(46, 125, 50, 0.08);
 }
 
 .settings-section input[type="text"] {

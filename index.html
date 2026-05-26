@@ -97,8 +97,12 @@
         <div class="settings-section">
           <h3>Sync</h3>
           <p class="settings-hint">Pair this device with another using a one-time code. Codes expire after 10 minutes.</p>
-          <div class="sync-code" id="sync-code-display">------</div>
-          <button id="copy-code-btn" class="copy-btn">Copy Code</button>
+          <div class="sync-code">
+            <span id="sync-code-display">------</span>
+            <button id="copy-code-btn" class="copy-btn" aria-label="Copy code" title="Copy code to clipboard" disabled>
+              <span class="copy-icon" aria-hidden="true">⧉</span>
+            </button>
+          </div>
           <input type="text" id="import-code" placeholder="Enter code from another device" maxlength="6" />
           <div class="sync-actions">
             <button id="import-btn" class="secondary">Pair</button>
