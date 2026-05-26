@@ -983,15 +983,33 @@ async function refreshSyncStatus() {
     return
   }
   syncBtn.disabled = false
-  // If we have a freshly generated code that hasn't expired, keep it visible
-  // with a countdown. Otherwise show the placeholder.
-  if (_pendingShareCode && _pendingShareCodeExpiry > Date.now()) {
+
+  // If we have an unexpired pending share code, that's the active UX —
+  // keep the code visible, keep the "share this code, expires in N min"
+  // status, and switch the primary button to "Generate new code" so the
+  // user can mint a fresh one if needed.
+  const havePendingCode =
+    _pendingShareCode && _pendingShareCodeExpiry > Date.now()
+
+  if (havePendingCode) {
     setShareCodeDisplay(_pendingShareCode)
-  } else {
-    _pendingShareCode = null
-    _pendingShareCodeExpiry = null
-    setShareCodeDisplay('------')
+    syncBtn.textContent = 'Generate new code'
+    const minsLeft = Math.max(
+      1,
+      Math.round((_pendingShareCodeExpiry - Date.now()) / 60000)
+    )
+    setStatus(
+      `Share this code — expires in ${minsLeft} min${minsLeft === 1 ? '' : 's'}`,
+      'pending'
+    )
+    return
   }
+
+  // No pending code: fall back to placeholder + paired/local status.
+  _pendingShareCode = null
+  _pendingShareCodeExpiry = null
+  setShareCodeDisplay('------')
+
   try {
     const state = await getPairedState()
     if (state.paired) {
@@ -1009,15 +1027,15 @@ async function refreshSyncStatus() {
   }
 }
 
-const COPY_ICON_DEFAULT = '⧉'
-const COPY_ICON_OK = '✓'
-const COPY_ICON_FAIL = '✗'
+const COPY_LABEL_DEFAULT = 'Copy'
+const COPY_LABEL_OK = 'Copied'
+const COPY_LABEL_FAIL = 'Try again'
 
-function setCopyIcon(symbol, klass = '') {
+function setCopyLabel(text, klass = '') {
   copyCodeBtn.classList.remove('copied')
   if (klass) copyCodeBtn.classList.add(klass)
-  const iconEl = copyCodeBtn.querySelector('.copy-icon')
-  if (iconEl) iconEl.textContent = symbol
+  const labelEl = copyCodeBtn.querySelector('.copy-label')
+  if (labelEl) labelEl.textContent = text
 }
 
 // Centralized setter — keeps the copy-button enabled/disabled state in sync
@@ -1026,7 +1044,7 @@ function setShareCodeDisplay(text) {
   syncCodeDisplay.textContent = text
   const real = text && text !== '------'
   copyCodeBtn.disabled = !real
-  setCopyIcon(COPY_ICON_DEFAULT)
+  setCopyLabel(COPY_LABEL_DEFAULT)
 }
 
 function copySyncCode() {
@@ -1035,12 +1053,12 @@ function copySyncCode() {
   navigator.clipboard
     .writeText(code)
     .then(() => {
-      setCopyIcon(COPY_ICON_OK, 'copied')
-      setTimeout(() => setCopyIcon(COPY_ICON_DEFAULT), 1500)
+      setCopyLabel(COPY_LABEL_OK, 'copied')
+      setTimeout(() => setCopyLabel(COPY_LABEL_DEFAULT), 1500)
     })
     .catch(() => {
-      setCopyIcon(COPY_ICON_FAIL)
-      setTimeout(() => setCopyIcon(COPY_ICON_DEFAULT), 1500)
+      setCopyLabel(COPY_LABEL_FAIL)
+      setTimeout(() => setCopyLabel(COPY_LABEL_DEFAULT), 1500)
     })
 }
 
@@ -1090,15 +1108,12 @@ async function handleSync() {
       _remoteUnsubscribe()
       _remoteUnsubscribe = wireSubscribe()
     } else {
-      // Generate code flow
+      // Generate code flow — set the pending state; refreshSyncStatus()
+      // below will format the display, status message, and button label
+      // consistently (and will keep doing so on subsequent refreshes).
       const { code, expiresAt } = await generateShareCode()
       _pendingShareCode = code
       _pendingShareCodeExpiry = expiresAt.getTime()
-      setShareCodeDisplay(code)
-      setStatus(
-        `Share this code — expires in ${Math.round((expiresAt.getTime() - Date.now()) / 60000)} min`,
-        'pending'
-      )
     }
   } catch (err) {
     setStatus(err.message || 'Operation failed', 'error')
