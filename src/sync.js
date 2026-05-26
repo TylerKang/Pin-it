@@ -102,11 +102,20 @@ function noteFingerprint(n) {
  * Boot sync. Resolves once Anonymous Auth completes and the local board
  * doc (`/boards/{uid}`) is ensured to exist. Default active board = my UID.
  * Returns { uid, boardId } or null in local-only mode.
+ *
+ * Implementation note: we deliberately do NOT read /boards/{uid} first.
+ * setDoc with merge:true + arrayUnion is idempotent — it creates the doc
+ * with [uid] on first launch, or no-ops on subsequent launches (since
+ * arrayUnion(self) on an array already containing self is a noop). This
+ * sidesteps any read-permission edge cases on non-existent docs.
  */
 export async function initSync() {
   if (!FIREBASE_CONFIGURED) return null
   const uid = await getUid()
-  if (!uid) return null
+  if (!uid) {
+    console.warn('[pin-it] initSync: no UID — Anonymous Auth may be disabled.')
+    return null
+  }
 
   let active = getActiveBoardId()
   if (!active) {
@@ -114,14 +123,25 @@ export async function initSync() {
     setActiveBoardId(active)
   }
 
-  const myBoardRef = doc(db, 'boards', uid)
-  const snap = await getDoc(myBoardRef)
-  if (!snap.exists()) {
-    await setDoc(myBoardRef, {
-      ownerUids: [uid],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    })
+  // Idempotent upsert. Rules:
+  //   - Create branch (doc didn't exist): ownerUids resolves to [uid],
+  //     matching the create rule's `ownerUids == [request.auth.uid]`.
+  //   - Update branch (doc exists, we're already an owner): arrayUnion
+  //     keeps other owners intact, satisfying the update rule's
+  //     `request.resource.data.ownerUids.hasAll(other_owners)`.
+  try {
+    await setDoc(
+      doc(db, 'boards', uid),
+      {
+        ownerUids: arrayUnion(uid),
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    )
+  } catch (err) {
+    console.error('[pin-it] initSync: board upsert failed:', err)
+    // Don't throw — let the app continue in degraded mode. The user-visible
+    // sync flows will surface their own errors when invoked.
   }
 
   return { uid, boardId: active }
