@@ -59,9 +59,9 @@ First release. Pin notes to an infinite canvas on Mac or browse a grid on iPhone
 **1. Screen recording**: Mac recording shows launch → infinite canvas → drag → settings → Generate code → iPhone pairs using that code with real-time updates. iPhone recording shows 2-col grid → long-press reorder → paired status. Both on physical devices, latest OS.
 
 **2. Test matrix**:
-- macOS 26.5 on MacBook Pro 14" (M-series)
-- iOS 18.x on iPhone 15 Pro
-- iOS 18.x on iPad Pro 11" (3rd gen)
+- macOS 26.5 (Tahoe) on Mac Studio
+- iOS 26.4 on iPhone 17 Pro Max
+- iPadOS 26.4 on iPad Pro 13" (M5)
 
 **3. Purpose**: Sticky-note board for visual thinkers (planners, writers, designers). Spatial canvas on Mac, grid on mobile. Calm, single-purpose tool, no accounts/ads/subscriptions.
 
