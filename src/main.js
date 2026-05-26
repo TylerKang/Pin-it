@@ -1086,7 +1086,8 @@ async function handleImport() {
     _remoteUnsubscribe = wireSubscribe()
     setTimeout(refreshSyncStatus, 800)
   } catch (err) {
-    setStatus(err.message || 'Could not pair', 'error')
+    console.error('[pin-it] pair failed:', err)
+    setStatus(`Pair failed: ${err.code || err.message || 'unknown'}`, 'error')
   } finally {
     importBtn.disabled = false
     importBtn.textContent = 'Pair'
@@ -1116,7 +1117,8 @@ async function handleSync() {
       _pendingShareCodeExpiry = expiresAt.getTime()
     }
   } catch (err) {
-    setStatus(err.message || 'Operation failed', 'error')
+    console.error('[pin-it] sync action failed:', err)
+    setStatus(`Sync error: ${err.code || err.message || 'unknown'}`, 'error')
   } finally {
     syncBtn.disabled = false
     setTimeout(refreshSyncStatus, 800)
