@@ -27,9 +27,11 @@ service cloud.firestore {
 
     // ─── /boards ─────────────────────────────────────────────────────
     match /boards/{boardId} {
-      // Read or write only if I'm one of the board's owners.
+      // Reads must allow non-existent docs so initSync() can probe before
+      // creating. Authenticated callers can also see boards they own.
       allow read: if request.auth != null
-                  && request.auth.uid in resource.data.ownerUids;
+                  && (resource == null
+                      || request.auth.uid in resource.data.ownerUids);
 
       allow update: if request.auth != null
                     && request.auth.uid in resource.data.ownerUids
@@ -51,11 +53,12 @@ service cloud.firestore {
 
       // ─── /boards/{boardId}/notes ───────────────────────────────────
       // A note may be read/created/updated/deleted by any owner of the
-      // parent board. Helper get() reads /boards/{boardId} to check
-      // ownerUids — small extra read per write, billable but cheap.
+      // parent board. exists()-guard the parent lookup so the rule
+      // doesn't blow up if the board doc was deleted out from under us.
       match /notes/{noteId} {
         function isOwner() {
           return request.auth != null
+            && exists(/databases/$(database)/documents/boards/$(boardId))
             && request.auth.uid in
                get(/databases/$(database)/documents/boards/$(boardId)).data.ownerUids;
         }
