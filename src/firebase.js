@@ -1,4 +1,4 @@
-// Firebase initialization for Pin-It — Sticky Note Board.
+// Firebase initialization for Pin-It Board.
 //
 // Config is loaded from Vite env vars (VITE_FIREBASE_*) so secrets-ish values
 // aren't baked into git. For local dev, drop them into .env.local:

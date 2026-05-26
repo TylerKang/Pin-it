@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Mac App Store entitlements for Pin-It — Sticky Note Board -->
+    <!-- Mac App Store entitlements for Pin-It Board -->
     <!-- Sandboxed (required by MAS) -->
     <key>com.apple.security.app-sandbox</key>
     <true/>

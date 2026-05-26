@@ -1,4 +1,4 @@
-// Sentry crash & error reporting for Pin-It — Sticky Note Board.
+// Sentry crash & error reporting for Pin-It Board.
 //
 // Initialized lazily and only when VITE_SENTRY_DSN is set, so dev runs and
 // the App Store reviewer's first launch don't accidentally fire test events.

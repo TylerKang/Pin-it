@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Firestore security rules for Pin-It — Sticky Note Board.
+// Firestore security rules for Pin-It Board.
 //
 // Paste into Firebase console → Firestore → Rules and Publish.
 //

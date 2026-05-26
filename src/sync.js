@@ -1,4 +1,4 @@
-// Sync module for Pin-It — Sticky Note Board.
+// Sync module for Pin-It Board.
 //
 // Code-pair model over Firebase Anonymous Auth + Firestore, with per-note
 // document storage so concurrent edits to different notes don't clobber

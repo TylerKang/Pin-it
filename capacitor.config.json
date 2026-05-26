@@ -1,6 +1,6 @@
 {
   "appId": "com.devsky.pinit",
-  "appName": "Pin-It — Sticky Note Board",
+  "appName": "Pin-It Board",
   "webDir": "dist",
   "ios": {
     "scheme": "Pin-It",

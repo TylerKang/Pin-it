@@ -3,8 +3,8 @@
 # launchable debug DMG.
 #
 # After this completes, release/ contains:
-#   - mas-universal/Pin-It — Sticky Note Board-<v>-universal.pkg   ← App Store
-#   - Pin-It — Sticky Note Board-<v>-universal.dmg                  ← debug
+#   - mas-universal/Pin-It Board-<v>-universal.pkg   ← App Store
+#   - Pin-It Board-<v>-universal.dmg                  ← debug
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

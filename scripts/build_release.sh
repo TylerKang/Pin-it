@@ -25,4 +25,4 @@ echo "=== Done (release) ==="
 ls -lh release/mas-universal/ 2>&1 | head -8
 echo ""
 echo "Upload via Transporter:"
-echo "  release/mas-universal/Pin-It — Sticky Note Board-*.pkg"
+echo "  release/mas-universal/Pin-It Board-*.pkg"

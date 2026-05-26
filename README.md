@@ -1,4 +1,4 @@
-# Pin-It — Sticky Note Board
+# Pin-It Board
 
 A digital pegboard with sticky notes. Infinite canvas on desktop, 2-column grid on mobile. Real-time sync between devices via 6-char pairing codes (no accounts).
 

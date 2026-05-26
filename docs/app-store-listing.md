@@ -4,7 +4,7 @@ Paste copy into ASC at submission time.
 
 ## Identity
 
-- Name: `Pin-It — Sticky Note Board` (26 chars)
+- Name: `Pin-It Board` (26 chars)
 - Subtitle: `Infinite sticky-note pegboard` (29 chars)
 - Bundle ID: `com.devsky.pinit`
 - Category: Productivity

@@ -1,4 +1,4 @@
-// Electron main process for Pin-It — Sticky Note Board (macOS wrapper).
+// Electron main process for Pin-It Board (macOS wrapper).
 //
 // Loads dist/index.html (the Vite build output) inside a BrowserWindow.
 // Same approach as BasicClock, with both-knobs productName fix:
