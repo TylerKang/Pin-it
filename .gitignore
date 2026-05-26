@@ -3,7 +3,6 @@ dist/
 .DS_Store
 *.local
 .env
-.env.*
 .claude/
 
 # Build outputs
@@ -39,3 +38,4 @@ assets/icon.iconset/
 .env.local
 .env*.local
 !.env.example
+!.env.production    # committed — Firebase web SDK config is non-secret (visible in bundled JS)
