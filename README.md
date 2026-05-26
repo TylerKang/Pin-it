@@ -1,52 +1,51 @@
-# Pin-It
+# Pin-It — Sticky Note Board
 
-A digital pegboard with sticky notes. Infinite canvas on desktop, compact grid on mobile.
+A digital pegboard with sticky notes. Infinite canvas on desktop, 2-column grid on mobile. Real-time sync between devices via 6-char pairing codes (no accounts).
 
-## Features
+Ships as: macOS App Store, iOS App Store, and web (`devsky.org/apps/pin-it/`).
 
-- **Infinite Canvas** — click and drag the background to pan freely in any direction
-- **Sticky Notes** — create notes with titles, body text, colors, and image attachments
-- **Drag & Drop** — move notes anywhere on the canvas; they snap to a grid and can't overlap
-- **Canvas Controls** — center view, gather all cards together, or see all cards in a mini overview
-- **Mobile Layout** — responsive 2-column grid with long-press to reorder
-- **Image Attachments** — drag-and-drop or click-to-upload on both create and edit modals
-- **Settings Panel** — sync code generation and import/export stubs (backend integration planned)
-- **Local Persistence** — all data saved to localStorage
+## Develop
 
-## Getting Started
-
-```bash
+```
 npm install
-npm run dev
+npm run dev          # http://localhost:3000
+npm run electron     # build + open Mac app
+npm run cap:sync     # build + sync iOS Xcode project
+npm run ios:open     # open Xcode
 ```
 
-Opens at `http://localhost:3000`.
+Drop a `.env.local` with `VITE_FIREBASE_*` to enable cloud sync locally. See `.env.example`.
 
 ## Build
 
-```bash
-npm run build
+```
+npm run build                 # web (dist/)
+bash scripts/build_release.sh # macOS .pkg for App Store
+bash scripts/build_debug.sh   # macOS .dmg signed with dev cert (locally runnable)
+bash scripts/build_all.sh     # both Mac builds
 ```
 
-Output goes to `dist/`.
+iOS is built through Xcode after `npm run cap:sync`.
 
 ## Stack
 
-- Vanilla JavaScript (no framework)
-- Vite (dev server + bundler)
-- localStorage (persistence)
+Vanilla JS + Vite. Electron wraps it for macOS, Capacitor wraps it for iOS. Firebase (Anonymous Auth + Firestore) for cross-device sync. Sentry for crash reporting (optional).
 
-## Project Structure
+## Layout
 
 ```
-index.html          App shell — header, board, modals, settings drawer
-src/main.js         Core logic — CRUD, drag, pan, canvas controls, mobile grid
-src/styles.css      All styles — CSS variables, layout, components
-src/sync.js         Sync module — code gen, import/export (localStorage stubs)
-vite.config.js      Dev server config
-CLAUDE.md           AI agent entry point
-AGENTS.md           Operating rules, architecture, conventions, changelog
+src/                Web app source (vanilla JS)
+electron/main.cjs   macOS Electron main process
+ios/                Capacitor-generated Xcode project (gitignored after add)
+capacitor.config.json
+build/              Mac entitlements plists
+scripts/            Mac build scripts + icon generator
+assets/             Generated icons (from icon-src.png)
+docs/               App Store listing copy
+firestore.rules     Firestore security rules (paste into Firebase Console)
 ```
+
+See `AGENTS.md` for harness rules and architecture detail.
 
 ## License
 
