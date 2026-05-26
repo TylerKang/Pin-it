@@ -244,9 +244,10 @@ export async function syncDiff(notes, lastFingerprints) {
   lastFingerprints.forEach((_fp, id) => {
     if (!next.has(id)) tasks.push(deleteNote(id))
   })
-  await Promise.all(tasks).catch((err) => {
-    console.warn('[pin-it] syncDiff partial failure:', err)
-  })
+  // Don't swallow errors here — let the caller react. Permission errors
+  // in particular are signals that we should NOT then treat remote as
+  // source of truth (would wipe local notes).
+  await Promise.all(tasks)
   return next
 }
 

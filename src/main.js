@@ -113,12 +113,23 @@ function wireSubscribe() {
 
     if (firstFire) {
       firstFire = false
-      if (remoteNotes.length === 0 && _suppressFirstSubscribeOverride) {
-        // Cloud is empty but we have local notes → push them up.
-        _lastPushedFingerprints = new Map() // empty → diff will push everything
-        saveNotes() // triggers the debounced push of all notes
+      if (remoteNotes.length === 0 && notes.length > 0) {
+        // Cloud is empty but we have local notes → push them up rather
+        // than wiping local. Always try the push regardless of
+        // _suppressFirstSubscribeOverride.
+        _lastPushedFingerprints = new Map()
+        saveNotes()
         return
       }
+    }
+
+    // DATA-LOSS GUARD: if cloud sync is unhealthy (pushes have been
+    // failing with permission errors) and we have local notes, do NOT
+    // let an empty remote snapshot wipe them. This protects the user
+    // when Firestore is unreachable, rules reject us, or auth is broken.
+    if (!_cloudSyncHealthy && remoteNotes.length === 0 && notes.length > 0) {
+      console.warn('[pin-it] skipping remote→local replace: sync unhealthy + remote empty + local has data')
+      return
     }
 
     // Otherwise: remote is the source of truth. Replace local state.
@@ -781,20 +792,25 @@ function deleteNote(id) {
 }
 
 let _pushDebounceId = null
+// True until a sync write fails with permission-denied / no-board-access.
+// While false, we refuse to let empty remote snapshots overwrite local
+// notes — otherwise a failed push followed by an empty subscribe would
+// wipe the user's local data (see commit history).
+let _cloudSyncHealthy = true
 function saveNotes() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(notes))
-  // Debounced per-note diff push: only changed/added/removed notes hit
-  // Firestore. Avoids whole-array clobbers between concurrent devices.
   if (FIREBASE_CONFIGURED) {
     clearTimeout(_pushDebounceId)
     _pushDebounceId = setTimeout(async () => {
       try {
-        // Snapshot order at fire time so the array index → `order` mapping
-        // matches what's currently rendered.
         const withOrder = notes.map((n, i) => ({ ...n, order: typeof n.order === 'number' ? n.order : i }))
         _lastPushedFingerprints = await syncDiff(withOrder, _lastPushedFingerprints)
+        _cloudSyncHealthy = true
       } catch (err) {
         console.warn('[pin-it] syncDiff failed:', err)
+        if (err && (err.code === 'permission-denied' || err.code === 'unauthenticated')) {
+          _cloudSyncHealthy = false
+        }
       }
     }, 600)
   }
