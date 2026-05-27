@@ -30,6 +30,7 @@
   "build": {
     "appId": "com.devsky.pinit",
     "productName": "Pin-It Board",
+    "buildVersion": "2",
     "copyright": "Copyright © 2026 DevSky. All rights reserved.",
     "mac": {
       "category": "public.app-category.productivity",
